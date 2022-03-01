@@ -52,4 +52,4 @@ Mkfile.old
 dkms.conf
 
 # Backup files
-*.backup
+*.backup*

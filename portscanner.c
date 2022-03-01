@@ -7,30 +7,24 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netdb.h>
-#include <pthread.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 #define MAX_PORT 65536
 
 int port_number = 0;
-pthread_mutex_t mutex;
 
 void check_socket(int socket);
-void *progress_bar();
 
 int main(int argc, char *argv[])
 {
   int web_socket;
+  int synRetries; // total number of SYN packets
   struct sockaddr_in s_in;
-  pthread_t th;
-  fd_set fdset;
-  struct timeval tv;
-
-  pthread_mutex_init(&mutex, 0);
 
   if (argc < 2)
   {
@@ -39,54 +33,31 @@ int main(int argc, char *argv[])
   }
   if (argc < 3)
   {
-    printf("Please provide a timeout\n");
+    printf("Please provide a maximum number of attempts\n");
     exit(EXIT_FAILURE);
   }
 
-  printf("IP address: %s\n", argv[1]);
+  synRetries = atoi(argv[2]);
 
   s_in.sin_family = AF_INET;
   s_in.sin_addr.s_addr = inet_addr(argv[1]); // target IP
-
-  pthread_create(&th, 0, &progress_bar, 0);
 
   for (port_number = 1; port_number < MAX_PORT; port_number++)
   {
     web_socket = socket(AF_INET, SOCK_STREAM, 0);
     check_socket(web_socket);
 
-    fcntl(web_socket, F_SETFL, O_NONBLOCK);
-
-    // address resolution
-
     s_in.sin_port = htons(port_number); // port
 
-    connect(web_socket, (struct sockaddr *)&s_in, sizeof(s_in));
+    setsockopt(web_socket, IPPROTO_TCP, TCP_SYNCNT, &synRetries, sizeof(synRetries));
 
-    FD_ZERO(&fdset);
-    FD_SET(web_socket, &fdset);
-    tv.tv_sec = atoi(argv[2]); /* 10 second timeout */
-    tv.tv_usec = 0;
-
-    if (select(web_socket + 1, NULL, &fdset, NULL, &tv) == 1)
+    if (connect(web_socket, (struct sockaddr *)&s_in, sizeof(s_in)) >= 0)
     {
-      int so_error;
-      socklen_t len = sizeof so_error;
-
-      getsockopt(web_socket, SOL_SOCKET, SO_ERROR, &so_error, &len);
-
-      if (so_error == 0)
-      {
-        pthread_mutex_lock(&mutex);
-        fputs("\033[A\033[2K", stdout);
-        printf("%d\topen\n\n", port_number);
-        pthread_mutex_unlock(&mutex);
-      }
+      printf("%d\topen\n", port_number);
     }
     close(web_socket);
   }
-  pthread_join(th, NULL);
-  pthread_mutex_destroy(&mutex);
+
   return 0;
 }
 
@@ -98,24 +69,4 @@ void check_socket(int socket)
     printf("Error code: %d\n", errno);
     exit(EXIT_FAILURE);
   }
-}
-
-void *progress_bar()
-{
-  float progress;
-
-  while (true)
-  {
-    pthread_mutex_lock(&mutex);
-    progress = (float)((float)port_number / (float)MAX_PORT);
-    printf("Progress %.2f %%\n", 100 * progress);
-    fputs("\033[A\033[2K", stdout);
-    // rewind(stdout);
-    pthread_mutex_unlock(&mutex);
-    if ((int)progress == 1)
-    {
-      break;
-    }
-  }
-  pthread_exit(NULL);
 }
