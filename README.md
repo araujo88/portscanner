@@ -9,7 +9,7 @@ A simple port scanner using raw sockets in C
 
 ## Usage
 
-`./portscanner <target_ip_address> <connection_timeout (seconds)> `
+`./portscanner <target_ip_address> <number_of_attempts> `
 
 ## Example
 
